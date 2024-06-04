@@ -1,0 +1,111 @@
+import numpy as np
+from scipy.optimize import minimize
+
+class LBFGSB:
+    def __init__(self, func, grad, bounds, m=10, tol=1e-5, max_iter=15000):
+        self.func = func
+        self.grad = grad
+        self.bounds = bounds
+        self.m = m
+        self.tol = tol
+        self.max_iter = max_iter
+
+    def minimize(self, x0):
+        n = len(x0)
+        S = []
+        Y = []
+        x = x0
+        f = self.func(x)
+        g = self.grad(x)
+        I = np.eye(n)
+
+        k = 0
+        while np.linalg.norm(g, ord=2) > self.tol and k < self.max_iter:
+            q = g
+            alpha = []
+            for i in range(len(S) - 1, -1, -1):
+                s = S[i]
+                y = Y[i]
+                rho = 1.0 / np.dot(y, s)
+                alpha_i = rho * np.dot(s, q)
+                alpha.append(alpha_i)
+                q = q - alpha_i * y
+
+            if len(S) > 0:
+                gamma = np.dot(S[-1], Y[-1]) / np.dot(Y[-1], Y[-1])
+            else:
+                gamma = 1.0
+            H0 = gamma * I
+
+            z = np.dot(H0, q)
+            alpha.reverse()
+            for i in range(len(S)):
+                s = S[i]
+                y = Y[i]
+                rho = 1.0 / np.dot(y, s)
+                beta = rho * np.dot(y, z)
+                z = z + s * (alpha[i] - beta)
+
+            p = -z
+            x_new = x + p
+
+            # Project x_new onto bounds
+            for i in range(n):
+                if x_new[i] < self.bounds[i][0]:
+                    x_new[i] = self.bounds[i][0]
+                elif x_new[i] > self.bounds[i][1]:
+                    x_new[i] = self.bounds[i][1]
+
+            s = x_new - x
+            x = x_new
+
+            g_new = self.grad(x)
+            y = g_new - g
+            g = g_new
+
+            if len(S) == self.m:
+                S.pop(0)
+                Y.pop(0)
+
+            S.append(s)
+            Y.append(y)
+
+            f = self.func(x)
+            k += 1
+            print(f"Iteration {k}, f(x) = {f}, ||g|| = {np.linalg.norm(g, ord=2)}")
+
+        return x
+
+# Константы
+U1, U2, U3, U4, U5 = 15, 47, 4, 170, 67
+alpha = np.array([30, 31, 34, 35, 36])
+delta = np.array([30, 31, 34, 35, 36])
+t = np.linspace(1, 12, 12)
+
+# Определение системы дифференциальных уравнений
+def system(R, U1, U2, U3, U4, U5, delta, t):
+    R1, R2, R3, R4 = R
+    dU1_dt = R1 * U2**4 - R2 * U1**2
+    dU3_dt = R2 * U1**2 - R3 * U3**3 / delta
+    dU4_dt = R3 * U3**3 / delta
+    dU2_dt = R4 * U5 - R1 * U2**4
+    dU5_dt = -R4 * U5
+    return np.array([dU1_dt, dU3_dt, dU4_dt, dU2_dt, dU5_dt])
+
+# Определение функции минимизации
+def objective(R):
+    U = np.array([U1, U2, U3, U4, U5])
+    error = 0
+    for i in range(len(alpha)):
+        dU = system(R, U1, U2, U3, U4, U5, delta[i], t)
+        error += (alpha[i] - dU[i])**2
+    return error
+
+# Определение начальных значений для R1, R2, R3, R4
+initial_guess = [1, 1, 1, 1]
+
+# Функция минимизации
+result = minimize(objective, initial_guess, method='L-BFGS-B')
+R_optimal = result.x
+
+print("Оптимальные значения R1, R2, R3, R4:", R_optimal)
